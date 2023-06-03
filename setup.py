@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='git2vec',
-    version='0.1',
+    version='0.1.1',
     description='A useful module for handling Git data.',
     author='Jamie Voynow',
     author_email='voynow99@gmail.com',
@@ -23,5 +23,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
-    ],
+	],
+	long_description=open("README.md", encoding="utf-8").read(),
+    long_description_content_type='text/markdown'
 )
