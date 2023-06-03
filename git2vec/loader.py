@@ -121,28 +121,30 @@ class TurboGitLoader(BaseLoader):
                     docs.append(doc)
 
         return docs
+    
+
+def docs_to_str(repo_data):
+    """ Convert repo data to raw text """
+    raw_repo = ""
+    for item in repo_data:
+        if item.page_content:
+            raw_repo += f"{item.metadata['file_path']}:\n\n{item.page_content}\n\n"
+    return raw_repo
 
 
-def load(repo, branch="main"):
-    """ Load the git repo data using TurboGitLoader
-    """
-    print("Fetching data from git repo...")
+def load(repo, branch="main", return_str=False):
+    """ Load the git repo data using TurboGitLoader """
     folder_name = repo.split("/")[-1]
     filter_fn = lambda x: not any([x.endswith(t) for t in UNWANTED_TYPES])
 
-    gitdata = TurboGitLoader(
+    repo_docs = TurboGitLoader(
         clone_url=repo,
         repo_path=f"./repo_loader_data/{folder_name}/",
         branch=branch,
         file_filter=filter_fn,
     ).load()
 
-    return gitdata
-
-def repo_to_raw(repo_data):
-    """ Convert repo data to raw text """
-    raw_repo = ""
-    for item in repo_data:
-        if item.page_content:
-            raw_repo += f"{item.metadata['file_path']}:\n{item.page_content}\n\n"
-    return raw_repo
+    if return_str:
+        return docs_to_str(repo_docs)
+    else:
+        return repo_docs
