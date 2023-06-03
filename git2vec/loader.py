@@ -132,7 +132,7 @@ def load(repo, branch="main"):
 
     gitdata = TurboGitLoader(
         clone_url=repo,
-        repo_path=f"./data/{folder_name}/",
+        repo_path=f"./repo_loader_data/{folder_name}/",
         branch=branch,
         file_filter=filter_fn,
     ).load()
