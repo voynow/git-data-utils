@@ -1,0 +1,4 @@
+langchain
+pinecone-client
+tiktoken
+gitpython
