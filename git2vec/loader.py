@@ -16,6 +16,7 @@ UNWANTED_TYPES = [
     ".gif",
     ".svg",
     "csv",
+    ".txt",
 ]
 
 
@@ -102,7 +103,8 @@ class TurboGitLoader(BaseLoader):
         elif self.clone_url:
             if os.path.exists(self.repo_path):
                 repo = Repo(self.repo_path)
-                repo.git.checkout(self.branch)
+                origin = repo.remote(name='origin')
+                origin.pull()
             else:
                 repo = Repo.clone_from(self.clone_url, self.repo_path)
                 repo.git.checkout(self.branch)
@@ -136,10 +138,11 @@ def load(repo, branch="main", return_str=False):
     """ Load the git repo data using TurboGitLoader """
     folder_name = repo.split("/")[-1]
     filter_fn = lambda x: not any([x.endswith(t) for t in UNWANTED_TYPES])
+    repo_path = f"./repodata/{folder_name}/"
 
     repo_docs = TurboGitLoader(
         clone_url=repo,
-        repo_path=f"./repo_loader_data/{folder_name}/",
+        repo_path=repo_path,
         branch=branch,
         file_filter=filter_fn,
     ).load()
