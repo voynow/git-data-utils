@@ -4,3 +4,4 @@ venv
 build
 dist
 git2vec.egg-info
+.env

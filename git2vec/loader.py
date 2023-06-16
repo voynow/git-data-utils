@@ -1,9 +1,16 @@
 import concurrent.futures
+from datetime import datetime, timedelta
+import dotenv
+from git import Blob
 import os
-from typing import Callable, List, Optional
+import requests
+from typing import Callable, List, Optional, Dict
 
 from langchain.docstore.document import Document
 from langchain.document_loaders.base import BaseLoader
+
+dotenv.load_dotenv()
+access_token = os.environ.get("GITHUB_ACCESS_TOKEN")
 
 UNWANTED_TYPES = [
     ".ipynb",
@@ -56,8 +63,6 @@ class TurboGitLoader(BaseLoader):
         Returns:
             The document, or None if the file could not be loaded.
         """
-        from git import Blob  # type: ignore
-
         if not isinstance(item, Blob):
             return None
 
@@ -151,3 +156,74 @@ def load(repo, branch="main", return_str=False):
         return docs_to_str(repo_docs)
     else:
         return repo_docs
+
+
+def flatten_dict(dd, separator="_", prefix=""):
+    """
+    Flattens a dictionary with nested structures
+
+    :param dd: Input dictionary to be flattened
+    :param separator: Separator for the keys in the flattened dictionary
+    :param prefix: Prefix for the keys in the flattened dictionary
+    :return: Flattened dictionary
+    """
+    return (
+        {
+            f"{prefix}{separator}{k}" if prefix else k: v
+            for kk, vv in dd.items()
+            for k, v in flatten_dict(vv, separator, kk).items()
+        }
+        if isinstance(dd, dict)
+        else {prefix: dd}
+    )
+
+
+def get_trending_repos(
+    n_repos: int = 10,
+    last_n_days: int = 30,
+    language: str = None,
+    sort: str = "stars",
+    order: str = "desc",
+) -> Dict[str, Dict]:
+    """
+    Query for repos created in the last n days
+
+    n_repos (int, optional): The number of repositories to return per page. Defaults to 10.
+    last_n_days (int, optional): The number of past days to consider for trending repos. Defaults to 30.
+    language (str, optional): The programming language to filter by. Defaults to None.
+    sort (str, optional): The field to sort the results by. Defaults to "stars".
+    order (str, optional): The ordering of the results. Defaults to "desc".
+    """
+    url = "https://api.github.com/search/repositories"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": f"Bearer {access_token}",
+    }
+
+    query = f"language:{language}" if language else "is:public"
+    date_since = (datetime.now() - timedelta(days=last_n_days)).strftime("%Y-%m-%d")
+    query += f" created:>{date_since}"
+
+    params = {"q": query, "sort": sort, "order": order, "per_page": n_repos}
+
+    with requests.Session() as session:
+        session.headers.update(headers)
+        try:
+            response = session.get(url, params=params)
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as errh:
+            print(f"HTTP Error: {errh}")
+        except requests.exceptions.ConnectionError as errc:
+            print(f"Error Connecting: {errc}")
+        except requests.exceptions.Timeout as errt:
+            print(f"Timeout Error: {errt}")
+        except requests.exceptions.RequestException as err:
+            print(f"Unknown Error: {err}")
+
+    return response.json()
+
+
+# Mass repo data pipeline
+def get_repo_data():
+    pass
+
