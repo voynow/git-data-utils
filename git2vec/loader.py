@@ -132,6 +132,10 @@ def pull_code_from_repo(repo, branch="main"):
     :param branch: default branch name
     :param return_str: return raw text or not
     """
+    # remove any old repos
+    if os.path.exists(REPODATA_FOLDER):
+        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
+
     folder_name = "/".join(repo.split("/")[3:5])
     output_path = f"{REPODATA_FOLDER}{folder_name}/"
 
@@ -161,10 +165,6 @@ def flatten_dict(dd, separator="_", prefix=""):
         if isinstance(dd, dict)
         else {prefix: dd}
     )
-
-def repos_to_df(repos):
-    repos = [flatten_dict(repo) for repo in repos['items']]
-    repos_df = pd.DataFrame(repos)
 
 
 def get_access_token():
@@ -232,9 +232,6 @@ def pipeline_fetch_and_load(
     sort: str = "stars",
     order: str = "desc",
 ) -> Dict[str, Dict]:
-    # remove any old repos
-    if os.path.exists(REPODATA_FOLDER):
-        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     response = get_top_repos(
         n_repos=n_repos,
