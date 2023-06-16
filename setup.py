@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='git2vec',
-    version='0.1.5',
+    version='0.1.8',
     description='A useful module for handling Git data.',
     author='Jamie Voynow',
     author_email='voynow99@gmail.com',
@@ -14,7 +14,6 @@ setup(
         'tiktoken',
         'gitpython',
         "python-dotenv",
-        "pandas",
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',  

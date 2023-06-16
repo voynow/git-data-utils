@@ -41,7 +41,7 @@ def load_file(item, output_path) -> Optional[Document]:
 
     file_path = os.path.join(output_path, item.path)
 
-    if not map(lambda x: not any([x.endswith(t) for t in UNWANTED_TYPES]), file_path):
+    if any([file_path.endswith(t) for t in UNWANTED_TYPES]):
         return None
 
     rel_file_path = os.path.relpath(file_path, output_path)
@@ -132,17 +132,12 @@ def pull_code_from_repo(repo, branch="main"):
     :param branch: default branch name
     :param return_str: return raw text or not
     """
-    # remove any old repos
-    if os.path.exists(REPODATA_FOLDER):
-        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
-
     folder_name = "/".join(repo.split("/")[3:5])
     output_path = f"{REPODATA_FOLDER}{folder_name}/"
 
     # git pull, load, and delete repo
     repo = git_pull(repo, branch, output_path)
     repo_docs = load_concurrently(repo, output_path)
-    shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     return repo_docs
 
@@ -232,6 +227,10 @@ def pipeline_fetch_and_load(
     sort: str = "stars",
     order: str = "desc",
 ) -> Dict[str, Dict]:
+    
+    # remove any old repos
+    if os.path.exists(REPODATA_FOLDER):
+        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     response = get_top_repos(
         n_repos=n_repos,
@@ -254,5 +253,8 @@ def pipeline_fetch_and_load(
             )
         else:
             print(f"Skipping {repo['html_url']} as it is empty")
+
+    # clean up repo data
+    shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     return github_data
