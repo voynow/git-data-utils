@@ -1,16 +1,17 @@
 import concurrent.futures
 from datetime import datetime, timedelta
 import dotenv
-from git import Blob
+import gc
+from git import Blob, Repo
 import os
+from pathlib import Path
 import requests
+import shutil
+import stat
 from typing import Callable, List, Optional, Dict
 
 from langchain.docstore.document import Document
-from langchain.document_loaders.base import BaseLoader
 
-dotenv.load_dotenv()
-access_token = os.environ.get("GITHUB_ACCESS_TOKEN")
 
 UNWANTED_TYPES = [
     ".ipynb",
@@ -25,113 +26,90 @@ UNWANTED_TYPES = [
     "csv",
     ".txt",
 ]
+REPODATA_FOLDER = "./repodata/"
 
 
-class TurboGitLoader(BaseLoader):
+def load_file(item, output_path) -> Optional[Document]:
     """
-    Loads files from a Git repository into a list of documents in parallel.
+    Loads a single file from the repository.
 
-    Credit to GPT4.
+    :param item: The file to load.
+    :return: The document or None if the file should be skipped.
+    """
+    if not isinstance(item, Blob):
+        return None
+
+    file_path = os.path.join(output_path, item.path)
+
+    if not map(lambda x: not any([x.endswith(t) for t in UNWANTED_TYPES]), file_path):
+        return None
+
+    rel_file_path = os.path.relpath(file_path, output_path)
+    try:
+        with open(file_path, "rb") as f:
+            content = f.read()
+            file_type = os.path.splitext(item.name)[1]
+
+            try:
+                text_content = content.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+
+            metadata = {
+                "file_path": rel_file_path,
+                "file_name": item.name,
+                "file_type": file_type,
+            }
+            doc = Document(page_content=text_content, metadata=metadata)
+            return doc
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}")
+        return None
+
+
+def load_concurrently(repo, output_path) -> List[Document]:
+    """
+    Loads all files from the repository in parallel.
+
+    :return: A list of documents
     """
 
-    def __init__(
-        self,
-        repo_path: str,
-        clone_url: Optional[str] = None,
-        branch: Optional[str] = "main",
-        file_filter: Optional[Callable[[str], bool]] = None,
-    ):
-        """Initializes the loader with the given parameters.
+    docs: List[Document] = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_item = {
+            executor.submit(load_file, item, output_path): item
+            for item in repo.tree().traverse()
+        }
+        for future in concurrent.futures.as_completed(future_to_item):
+            doc = future.result()
+            if doc is not None:
+                docs.append(doc)
+        executor.shutdown(wait=True)
 
-        Parameters:
-            repo_path: The path to the repository.
-            clone_url: The URL to clone the repository from, if it's not local.
-            branch: The branch to load the files from.
-            file_filter: A function to filter the files to load.
-        """
-        self.repo_path = repo_path
-        self.clone_url = clone_url
-        self.branch = branch
-        self.file_filter = file_filter
+    return docs
 
-    def _load_file(self, item) -> Optional[Document]:
-        """Loads a single file from the repository.
 
-        Parameters:
-            item: The item to load.
+def git_pull(clone_url, branch, output_path):
+    """
+    Pull the repo if it exists, otherwise clone it
 
-        Returns:
-            The document, or None if the file could not be loaded.
-        """
-        if not isinstance(item, Blob):
-            return None
+    :param output_path: local path to output
+    :param clone_url: URL to the repo
+    :param branch: default branch name
+    :return: Repo object
+    """
+    if os.path.exists(output_path):
+        repo = Repo(output_path)
+        origin = repo.remote(name="origin")
+        origin.pull()
+    else:
+        repo = Repo.clone_from(clone_url, output_path)
+        repo.git.checkout(branch)
+    return repo
 
-        file_path = os.path.join(self.repo_path, item.path)
-
-        # uses filter to skip files
-        if self.file_filter and not self.file_filter(file_path):
-            return None
-
-        rel_file_path = os.path.relpath(file_path, self.repo_path)
-        try:
-            with open(file_path, "rb") as f:
-                content = f.read()
-                file_type = os.path.splitext(item.name)[1]
-
-                # loads only text files
-                try:
-                    text_content = content.decode("utf-8")
-                except UnicodeDecodeError:
-                    return None
-
-                metadata = {
-                    "file_path": rel_file_path,
-                    "file_name": item.name,
-                    "file_type": file_type,
-                }
-                doc = Document(page_content=text_content, metadata=metadata)
-                return doc
-        except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
-            return None
-
-    def load(self) -> List[Document]:
-        """Loads all files from the repository in parallel.
-
-        Returns:
-            The list of documents.
-        """
-        from git import Repo
-
-        if not os.path.exists(self.repo_path) and self.clone_url is None:
-            raise ValueError(f"Path {self.repo_path} does not exist")
-        elif self.clone_url:
-            if os.path.exists(self.repo_path):
-                repo = Repo(self.repo_path)
-                origin = repo.remote(name='origin')
-                origin.pull()
-            else:
-                repo = Repo.clone_from(self.clone_url, self.repo_path)
-                repo.git.checkout(self.branch)
-        else:
-            repo = Repo(self.repo_path)
-            repo.git.checkout(self.branch)
-
-        docs: List[Document] = []
-
-        # Use a ThreadPoolExecutor to load files in parallel
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_to_item = {executor.submit(self._load_file, item): item for item in repo.tree().traverse()}
-            for future in concurrent.futures.as_completed(future_to_item):
-                doc = future.result()
-                if doc is not None:
-                    docs.append(doc)
-
-        return docs
-    
 
 def docs_to_str(repo_data):
-    """ Convert repo data to raw text """
+    """Convert repo data to raw text"""
     raw_repo = ""
     for item in repo_data:
         if item.page_content:
@@ -139,23 +117,30 @@ def docs_to_str(repo_data):
     return raw_repo
 
 
-def load(repo, branch="main", return_str=False):
-    """ Load the git repo data using TurboGitLoader """
-    folder_name = repo.split("/")[-1]
-    filter_fn = lambda x: not any([x.endswith(t) for t in UNWANTED_TYPES])
-    repo_path = f"./repodata/{folder_name}/"
+def readonly_to_writable(fn, file, err):
+    """Exception handler for OS error on rmtree"""
+    if Path(file).suffix in [".idx", ".pack"] and "PermissionError" == err[0].__name__:
+        os.chmod(file, stat.S_IWRITE)
+        fn(file)
 
-    repo_docs = TurboGitLoader(
-        clone_url=repo,
-        repo_path=repo_path,
-        branch=branch,
-        file_filter=filter_fn,
-    ).load()
 
-    if return_str:
-        return docs_to_str(repo_docs)
-    else:
-        return repo_docs
+def pull_code_from_repo(repo, branch="main"):
+    """
+    Load the git repo data using TurboGitLoader
+
+    :param repo: URL to the repo
+    :param branch: default branch name
+    :param return_str: return raw text or not
+    """
+    folder_name = "/".join(repo.split("/")[3:5])
+    output_path = f"{REPODATA_FOLDER}{folder_name}/"
+
+    # git pull, load, and delete repo
+    repo = git_pull(repo, branch, output_path)
+    repo_docs = load_concurrently(repo, output_path)
+    shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
+
+    return repo_docs
 
 
 def flatten_dict(dd, separator="_", prefix=""):
@@ -177,10 +162,25 @@ def flatten_dict(dd, separator="_", prefix=""):
         else {prefix: dd}
     )
 
+def repos_to_df(repos):
+    repos = [flatten_dict(repo) for repo in repos['items']]
+    repos_df = pd.DataFrame(repos)
 
-def get_trending_repos(
-    n_repos: int = 10,
-    last_n_days: int = 30,
+
+def get_access_token():
+    """Can be stored in a .env file or as an environment variable"""
+    dotenv.load_dotenv()
+    access_token = os.getenv("GITHUB_ACCESS_TOKEN")
+    if not access_token:
+        raise ValueError(
+            "ACCESS_TOKEN not found. Either create a .env file or set the environment variable."
+        )
+    return access_token
+
+
+def get_top_repos(
+    n_repos: int,
+    last_n_days: int,
     language: str = None,
     sort: str = "stars",
     order: str = "desc",
@@ -188,12 +188,14 @@ def get_trending_repos(
     """
     Query for repos created in the last n days
 
-    n_repos (int, optional): The number of repositories to return per page. Defaults to 10.
-    last_n_days (int, optional): The number of past days to consider for trending repos. Defaults to 30.
-    language (str, optional): The programming language to filter by. Defaults to None.
-    sort (str, optional): The field to sort the results by. Defaults to "stars".
-    order (str, optional): The ordering of the results. Defaults to "desc".
+    :param n_repos: Number of repos to return
+    :param last_n_days: Number of days to look back
+    :param language: Language to filter by
+    :param sort: Sort by stars, forks, or updated
+    :param order: Order by asc or desc
+    :return: Dictionary of repo data
     """
+    access_token = get_access_token()
     url = "https://api.github.com/search/repositories"
     headers = {
         "Accept": "application/vnd.github.v3+json",
@@ -223,7 +225,37 @@ def get_trending_repos(
     return response.json()
 
 
-# Mass repo data pipeline
-def get_repo_data():
-    pass
+def pipeline_fetch_and_load(
+    n_repos: int,
+    last_n_days: int,
+    language: str = None,
+    sort: str = "stars",
+    order: str = "desc",
+) -> Dict[str, Dict]:
+    # remove any old repos
+    if os.path.exists(REPODATA_FOLDER):
+        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
+    response = get_top_repos(
+        n_repos=n_repos,
+        last_n_days=last_n_days,
+        language=language,
+        sort=sort,
+        order=order,
+    )
+
+    github_data = {}
+    for repo in response["items"]:
+        if repo["size"]:
+            repo_key = repo["html_url"]
+            github_data[repo_key] = repo
+
+            # docs attribute stored wtih metadata
+            print(f"Processing {repo_key}...")
+            github_data[repo_key]["docs"] = pull_code_from_repo(
+                repo_key, branch=repo["default_branch"]
+            )
+        else:
+            print(f"Skipping {repo['html_url']} as it is empty")
+
+    return github_data

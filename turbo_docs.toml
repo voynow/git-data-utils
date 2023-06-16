@@ -1,0 +1,14 @@
+# excluding files from turbo_docs commands
+
+ignore = [
+    ".git",
+    "__pycache__",
+    "repodata",
+    "venv",
+    "build",
+    "dist",
+    "git2vec.egg-info",
+    ".env",
+    "example.ipynb",
+    "README.md",
+]
