@@ -12,7 +12,7 @@ setup(
         'langchain',
         'pinecone-client',
         'tiktoken',
-        'gitpython'
+        'gitpython',
         "python-dotenv",
         "pandas",
     ],
