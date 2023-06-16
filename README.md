@@ -1,73 +1,83 @@
-# Git2Vec Repo
+# Git2Vec
 
-Git2Vec is a Python module that allows you to load text files from a Git repository and create a searchable vector database using Langchain, Pinecone, and OpenAI.
+Git2Vec is a Python package for handling Git data. It provides functionality to load and process Git repositories, and supports concurrent file loading for improved performance. The package can be found on [PyPI](https://pypi.org/project/git2vec/).
 
 ## Installation
 
-Install from https://pypi.org/project/git2vec/ using pip
+To install Git2Vec, run the following command:
 
 ```bash
 pip install git2vec
 ```
 
-If cloned, you will need to install the following packages:
+## Setup
+
+Before using Git2Vec, make sure to have the following dependencies installed:
+
+- langchain
+- pinecone-client
+- tiktoken
+- gitpython
+- python-dotenv
+- pandas
+
+You can install them using the following command:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-If you are a developer, you will need to install the development requirements:
-
-```bash
-pip install -r requirements.dev.txt
-```
-
 ## Usage
 
-### Loading a Git repository
+### Loading Git Repositories
 
-To load a Git repository, use the `git2vec.loader.load()` function:
-
-```python
-from git2vec import loader
-
-repo_name = "https://github.com/voynow/turbo-docs"
-
-# Returns a list of Document objects
-repo_data = loader.load(repo_name)
-
-# Or return a string of all the raw text
-raw_repo = loader.load(repo_name, return_str=True)
-```
-
-### Creating and managing a vector database
-
-To create a vector database from the loaded Git repository, use the following functions:
+The main functionality of Git2Vec is provided by the `loader.py` module. Here's an example of how to use the `pull_code_from_repo` function to load a Git repository:
 
 ```python
-from git2vec import vectordb
+from git2vec.loader import pull_code_from_repo
 
-# Create a vector store from the Git repo
-vectorstore = vectordb.create_vectorstore(repo_name)
+repo_url = "https://github.com/username/repo.git"
+branch = "main"
 
-# Retrieve the vector store from Pinecone index
-vectorstore = vectordb.get_vectorstore()
+repo_data = pull_code_from_repo(repo_url, branch)
 ```
 
-## Modules
+### Getting Top Repositories
 
-### loader.py
+You can use the `get_top_repos` function to fetch the top repositories based on certain criteria:
 
-The `loader.py` module contains the `TurboGitLoader` class which can be used to load text files from a Git repository. The `load()` function takes a repository URL and returns a list of `Document` objects or a string containing all the raw text.
+```python
+from git2vec.loader import get_top_repos
 
-### vectordb.py
+n_repos = 10
+last_n_days = 30
+language = "Python"
+sort = "stars"
+order = "desc"
 
-The `vectordb.py` module provides functions to create and manage a vector database using Langchain, Pinecone, and OpenAI. It contains functions for initializing Pinecone, upserting data, processing data, embedding and upserting, creating a vectorstore, and retrieving a vectorstore.
+top_repos = get_top_repos(n_repos, last_n_days, language, sort, order)
+```
+
+### Pipeline Fetch and Load
+
+The `pipeline_fetch_and_load` function can be used to fetch and load repositories in a single step:
+
+```python
+from git2vec.loader import pipeline_fetch_and_load
+
+n_repos = 10
+last_n_days = 30
+language = "Python"
+sort = "stars"
+order = "desc"
+
+github_data = pipeline_fetch_and_load(n_repos, last_n_days, language, sort, order)
+```
 
 ## Contributing
 
-If you find any issues or have any suggestions, feel free to open an issue or submit a pull request. We welcome any contributions!
+If you'd like to contribute to Git2Vec, feel free to fork the repository and submit a pull request. If you have any questions or issues, please open an issue on the GitHub repository.
 
 ## License
 
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+Git2Vec is released under the MIT License.
