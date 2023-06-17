@@ -7,7 +7,7 @@ ignore = [
     "venv",
     "build",
     "dist",
-    "git2vec.egg-info",
+    "git2doc.egg-info",
     ".env",
     "example.ipynb",
     "README.md",

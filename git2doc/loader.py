@@ -124,7 +124,7 @@ def readonly_to_writable(fn, file, err):
         fn(file)
 
 
-def pull_code_from_repo(repo, branch="main"):
+def pull_code_from_repo(repo, branch="main", delete=False):
     """
     Load the git repo data using TurboGitLoader
 
@@ -138,6 +138,10 @@ def pull_code_from_repo(repo, branch="main"):
     # git pull, load, and delete repo
     repo = git_pull(repo, branch, output_path)
     repo_docs = load_concurrently(repo, output_path)
+
+    if delete:
+
+        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     return repo_docs
 
@@ -226,6 +230,7 @@ def pipeline_fetch_and_load(
     language: str = None,
     sort: str = "stars",
     order: str = "desc",
+    delete: bool = False,
 ) -> Dict[str, Dict]:
     
     # remove any old repos
@@ -249,7 +254,7 @@ def pipeline_fetch_and_load(
             # docs attribute stored wtih metadata
             print(f"Processing {repo_key}...")
             github_data[repo_key]["docs"] = pull_code_from_repo(
-                repo_key, branch=repo["default_branch"]
+                repo_key, branch=repo["default_branch"], delete=delete
             )
         else:
             print(f"Skipping {repo['html_url']} as it is empty")

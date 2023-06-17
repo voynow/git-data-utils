@@ -1,16 +1,15 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='git2vec',
-    version='0.1.8',
-    description='A useful module for handling Git data.',
+    name='git2doc',
+    version='0.2.0',
+    description='A tool for converting git repositories into documents',
     author='Jamie Voynow',
     author_email='voynow99@gmail.com',
-    url='https://github.com/voynow/git2vec',
+    url='https://github.com/voynow/git2doc',
     packages=find_packages(),
     install_requires=[
         'langchain',
-        'pinecone-client',
         'tiktoken',
         'gitpython',
         "python-dotenv",
