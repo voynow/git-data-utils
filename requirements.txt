@@ -1,4 +1,3 @@
 langchain
-tiktoken
 gitpython
 python-dotenv

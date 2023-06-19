@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import dotenv
 import gc
 from git import Blob, Repo
+from git.exc import InvalidGitRepositoryError
 import os
 from pathlib import Path
 import requests
@@ -23,8 +24,15 @@ UNWANTED_TYPES = [
     ".jpeg",
     ".gif",
     ".svg",
-    "csv",
+    ".csv",
     ".txt",
+    ".jsonl",
+    ".struct",
+    ".map",
+    ".obj",
+    ".cleaned",
+    ".dict",
+    ".GIF",
 ]
 REPODATA_FOLDER = "./repodata/"
 
@@ -103,7 +111,12 @@ def git_pull(clone_url, branch, output_path):
         origin = repo.remote(name="origin")
         origin.pull()
     else:
-        repo = Repo.clone_from(clone_url, output_path)
+        repo = Repo.clone_from(
+            clone_url,
+            output_path,
+            allow_unsafe_options=True,
+            multi_options=["--config", "lfs.fetchexclude=*"],
+        )
         repo.git.checkout(branch)
     return repo
 
@@ -140,7 +153,6 @@ def pull_code_from_repo(repo, branch="main", delete=False):
     repo_docs = load_concurrently(repo, output_path)
 
     if delete:
-
         shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
     return repo_docs
@@ -205,23 +217,57 @@ def get_top_repos(
     date_since = (datetime.now() - timedelta(days=last_n_days)).strftime("%Y-%m-%d")
     query += f" created:>{date_since}"
 
-    params = {"q": query, "sort": sort, "order": order, "per_page": n_repos}
+    repos = []
+    page = 1
+    while len(repos) < n_repos:
+        params = {
+            "q": query,
+            "sort": sort,
+            "order": order,
+            "per_page": 100,
+            "page": page,
+        }
 
-    with requests.Session() as session:
-        session.headers.update(headers)
+        with requests.Session() as session:
+            session.headers.update(headers)
+            try:
+                response = session.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                repos.extend(data.get("items", []))
+            except requests.exceptions.HTTPError as errh:
+                print(f"HTTP Error: {errh}")
+            except requests.exceptions.ConnectionError as errc:
+                print(f"Error Connecting: {errc}")
+            except requests.exceptions.Timeout as errt:
+                print(f"Timeout Error: {errt}")
+            except requests.exceptions.RequestException as err:
+                print(f"Unknown Error: {err}")
+                break
+
+        # Increment the page number for the next iteration
+        page += 1
+
+    # Return only the number of repositories requested
+    return repos[:n_repos]
+
+
+def pull_code_helper(repo_key, branch, delete, max_retries=3):
+    """rmtree and retry on intermittent errors"""
+    retries = 0
+    while retries < max_retries:
         try:
-            response = session.get(url, params=params)
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as errh:
-            print(f"HTTP Error: {errh}")
-        except requests.exceptions.ConnectionError as errc:
-            print(f"Error Connecting: {errc}")
-        except requests.exceptions.Timeout as errt:
-            print(f"Timeout Error: {errt}")
-        except requests.exceptions.RequestException as err:
-            print(f"Unknown Error: {err}")
+            data = pull_code_from_repo(repo_key, branch=branch, delete=delete)
+            return data
+        except InvalidGitRepositoryError:
+            print(f"Error with {repo_key}, retrying... ({retries + 1}/{max_retries})")
+            shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
+            retries += 1
 
-    return response.json()
+    print(
+        f"Failed to pull data from {repo_key} after {max_retries} attempts. Skipping..."
+    )
+    return None
 
 
 def pipeline_fetch_and_load(
@@ -232,7 +278,6 @@ def pipeline_fetch_and_load(
     order: str = "desc",
     delete: bool = False,
 ) -> Dict[str, Dict]:
-    
     # remove any old repos
     if os.path.exists(REPODATA_FOLDER):
         shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
@@ -246,18 +291,26 @@ def pipeline_fetch_and_load(
     )
 
     github_data = {}
-    for repo in response["items"]:
-        if repo["size"]:
-            repo_key = repo["html_url"]
-            github_data[repo_key] = repo
+    for i, repo_metadata in enumerate(response):
+        repo_key = repo_metadata["html_url"]
 
-            # docs attribute stored wtih metadata
-            print(f"Processing {repo_key}...")
-            github_data[repo_key]["docs"] = pull_code_from_repo(
-                repo_key, branch=repo["default_branch"], delete=delete
+        if repo_metadata["size"]:
+            print(f"({i}) Processing {repo_key}...")
+
+            github_data[repo_key] = {}
+            github_data[repo_key]["metadata"] = repo_metadata
+
+            response = pull_code_helper(
+                repo_key,
+                branch=repo_metadata["default_branch"],
+                delete=delete,
             )
+            if response:
+                github_data[repo_key]["docs"] = response
+            else:
+                del github_data[repo_key]
         else:
-            print(f"Skipping {repo['html_url']} as it is empty")
+            print(f"Skipping {repo_key} as it is empty")
 
     # clean up repo data
     shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)

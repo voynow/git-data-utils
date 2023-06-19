@@ -1,93 +1,64 @@
-# Git2Doc
+# Git2Doc 📚
 
-Git2Doc is a Python package for handling Git data. It provides functionality to load and process Git repositories, and supports concurrent file loading for improved performance. The package can be found on [PyPI](https://pypi.org/project/git2doc/).
+[![PyPI version](https://badge.fury.io/py/git2doc.svg)](https://pypi.org/project/git2doc/)
+
+Git2Doc is a Python package that allows you to convert git repositories into documents. It is designed to help developers analyze and understand codebases by providing an easy way to extract and process text content from git repositories.
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Setup](#setup)
 - [Usage](#usage)
-  - [Loading Git Repositories](#loading-git-repositories)
-  - [Getting Top Repositories](#getting-top-repositories)
-  - [Pipeline Fetch and Load](#pipeline-fetch-and-load)
+  - [Example: Fetch and Load Repositories](#example-fetch-and-load-repositories)
+  - [Example: Get Top Repositories](#example-get-top-repositories)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## Installation
 
-To install Git2Doc, run the following command:
+To install Git2Doc, simply run:
 
 ```bash
 pip install git2doc
 ```
 
-## Setup
-
-Before using Git2Doc, make sure to have the following dependencies installed:
-
-- langchain
-- tiktoken
-- gitpython
-- python-dotenv
-- pandas
-
-You can install them using the following command:
-
-```bash
-pip install -r requirements.txt
-```
-
 ## Usage
 
-### Loading Git Repositories
-
-The main functionality of Git2Doc is provided by the `loader.py` module. Here's an example of how to use the `pull_code_from_repo` function to load a Git repository:
-
-```python
-from git2doc.loader import pull_code_from_repo
-
-repo_url = "https://github.com/username/repo.git"
-branch = "main"
-
-repo_data = pull_code_from_repo(repo_url, branch)
-```
-
-### Getting Top Repositories
-
-You can use the `get_top_repos` function to fetch the top repositories based on certain criteria:
-
-```python
-from git2doc.loader import get_top_repos
-
-n_repos = 10
-last_n_days = 30
-language = "Python"
-sort = "stars"
-order = "desc"
-
-top_repos = get_top_repos(n_repos, last_n_days, language, sort, order)
-```
-
-### Pipeline Fetch and Load
-
-The `pipeline_fetch_and_load` function can be used to fetch and load repositories in a single step:
+### Example: Fetch and Load Repositories
 
 ```python
 from git2doc.loader import pipeline_fetch_and_load
 
-n_repos = 10
-last_n_days = 30
-language = "Python"
-sort = "stars"
-order = "desc"
+# Fetch and load the top 5 repositories created in the last 7 days
+github_data = pipeline_fetch_and_load(n_repos=5, last_n_days=7)
 
-github_data = pipeline_fetch_and_load(n_repos, last_n_days, language, sort, order)
+# Print the metadata and documents for each repository
+for repo_key, repo_data in github_data.items():
+    print(f"Repository: {repo_key}")
+    print("Metadata:")
+    for key, value in repo_data["metadata"].items():
+        print(f"  {key}: {value}")
+    print("Documents:")
+    for doc in repo_data["docs"]:
+        print(f"  {doc.metadata['file_path']}: {doc.page_content[:50]}...")
+```
+
+### Example: Get Top Repositories
+
+```python
+from git2doc.loader import get_top_repos
+
+# Get the top 5 Python repositories created in the last 7 days
+top_repos = get_top_repos(n_repos=5, last_n_days=7, language="Python")
+
+# Print the repository URLs
+for repo in top_repos:
+    print(repo["html_url"])
 ```
 
 ## Contributing
 
-If you'd like to contribute to Git2Doc, feel free to fork the repository and submit a pull request. If you have any questions or issues, please open an issue on the GitHub repository.
+Contributions are welcome! Please feel free to submit a pull request or open an issue on GitHub.
 
 ## License
 
-Git2Doc is released under the MIT License.
+Git2Doc is released under the [MIT License](https://opensource.org/licenses/MIT).
