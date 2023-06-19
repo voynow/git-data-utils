@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='git2doc',
-    version='0.2.0',
+    version='0.2.1',
     description='A tool for converting git repositories into documents',
     author='Jamie Voynow',
     author_email='voynow99@gmail.com',
@@ -27,3 +27,6 @@ setup(
 	long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type='text/markdown'
 )
+
+# python setup.py sdist bdist_wheel
+# twine upload dist/*
