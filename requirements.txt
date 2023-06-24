@@ -1,3 +1,2 @@
-langchain
 gitpython
 python-dotenv
