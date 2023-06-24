@@ -1,64 +1,67 @@
 # Git2Doc 📚
+[![PyPI version](https://badge.fury.io/py/git2doc.svg)](https://badge.fury.io/py/git2doc)
+[![GitHub stars](https://img.shields.io/github/stars/voynow/git2doc.svg)](https://github.com/voynow/git2doc/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/voynow/git2doc.svg)](https://github.com/voynow/git2doc/issues)
 
-[![PyPI version](https://badge.fury.io/py/git2doc.svg)](https://pypi.org/project/git2doc/)
+A Python package for converting git repositories into documents. Git2Doc is a powerful tool that allows you to extract and analyze code from GitHub repositories, making it easier to understand and work with large codebases.
 
-Git2Doc is a Python package that allows you to convert git repositories into documents. It is designed to help developers analyze and understand codebases by providing an easy way to extract and process text content from git repositories.
+## Why Git2Doc? 🚀
 
-## Table of Contents
+- Extract code from repositories with ease
+- Analyze code in a structured manner
+- Filter out unwanted file types
+- Save extracted data in a convenient format (e.g., Parquet)
+
+## Table of Contents 📑
 
 - [Installation](#installation)
 - [Usage](#usage)
-  - [Example: Fetch and Load Repositories](#example-fetch-and-load-repositories)
-  - [Example: Get Top Repositories](#example-get-top-repositories)
-- [Contributing](#contributing)
-- [License](#license)
+  - [Fetching Repositories](#fetching-repositories)
+  - [Loading Repository Data](#loading-repository-data)
+  - [Writing Data to Parquet Files](#writing-data-to-parquet-files)
+- [Badges](#badges)
 
-## Installation
-
-To install Git2Doc, simply run:
+## Installation 💻
 
 ```bash
 pip install git2doc
 ```
 
-## Usage
+## Usage 🛠
 
-### Example: Fetch and Load Repositories
+### Fetching Repositories
+
+```python
+from git2doc.loader import get_repos_orchestrator
+
+repos = get_repos_orchestrator(
+    n_repos=10,
+    last_n_days=30,
+    language="Python"
+)
+```
+
+### Loading Repository Data
+
+```python
+from git2doc.loader import pull_code_from_repo
+
+repo_data = pull_code_from_repo(
+    repo="https://github.com/voynow/git2doc",
+    branch="main",
+    delete=True
+)
+```
+
+### Writing Data to Parquet Files
 
 ```python
 from git2doc.loader import pipeline_fetch_and_load
 
-# Fetch and load the top 5 repositories created in the last 7 days
-github_data = pipeline_fetch_and_load(n_repos=5, last_n_days=7)
-
-# Print the metadata and documents for each repository
-for repo_key, repo_data in github_data.items():
-    print(f"Repository: {repo_key}")
-    print("Metadata:")
-    for key, value in repo_data["metadata"].items():
-        print(f"  {key}: {value}")
-    print("Documents:")
-    for doc in repo_data["docs"]:
-        print(f"  {doc.metadata['file_path']}: {doc.page_content[:50]}...")
+pipeline_fetch_and_load(
+    n_repos=10,
+    last_n_days=30,
+    language="Python",
+    write_batch_size=100
+)
 ```
-
-### Example: Get Top Repositories
-
-```python
-from git2doc.loader import get_top_repos
-
-# Get the top 5 Python repositories created in the last 7 days
-top_repos = get_top_repos(n_repos=5, last_n_days=7, language="Python")
-
-# Print the repository URLs
-for repo in top_repos:
-    print(repo["html_url"])
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a pull request or open an issue on GitHub.
-
-## License
-
-Git2Doc is released under the [MIT License](https://opensource.org/licenses/MIT).

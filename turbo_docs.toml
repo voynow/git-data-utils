@@ -10,5 +10,5 @@ ignore = [
     "git2doc.egg-info",
     ".env",
     "example.ipynb",
-    "README.md",
+    "output_data",
 ]
