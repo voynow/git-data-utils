@@ -6,6 +6,7 @@ from git.exc import InvalidGitRepositoryError, GitCommandError
 import os
 import math
 from pathlib import Path
+import polars as pl
 import requests
 import shutil
 import stat
@@ -32,6 +33,25 @@ UNWANTED_TYPES = [
     ".cleaned",
     ".dict",
     ".GIF",
+    ".tiktoken",
+    ".lock",
+    ".pack",
+    ".sub",
+    ".zh_CN",
+    ".dae",
+    ".zh_CN_tgt",
+    ".dat",
+    ".tsv",
+    ".tokens",
+    ".off",
+    ".sense",
+    ".log",
+    ".bvh",
+    ".onnx",
+    ".gltf",
+    ".cif",
+    ".geojson",
+    "pkl",
 ]
 REPODATA_FOLDER = "./repodata/"
 
@@ -62,14 +82,13 @@ def load_file(item, output_path) -> Optional[dict]:
             except UnicodeDecodeError:
                 return None
 
-            metadata = {
+            return {
+                "page_content": text_content,
                 "file_path": rel_file_path,
                 "file_name": item.name,
                 "file_type": file_type,
             }
-            return {"page_content": text_content, "metadata": metadata}
     except Exception as e:
-        print(f"Error reading file {file_path}: {e}")
         return None
 
 
@@ -151,6 +170,7 @@ def pull_code_from_repo(repo, branch="main", delete=False):
     # git pull, load, and delete repo
     repo = git_pull(repo, branch, output_path)
     repo_files = load_concurrently(repo, output_path)
+    repo.close()
 
     if delete:
         shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
@@ -208,14 +228,15 @@ def get_time_intervals(last_n_days, n_intervals):
     return intervals
 
 
-def query_top_repos(url, headers, query, repo_batch_size, max_retries=3, retry_delay=5):
+def run_repos_query(url, headers, query, repo_batch_size, max_retries=3, retry_delay=5):
+    """Given a query, return a repo metadata"""
     repos = []
     page = 1
 
     while len(repos) < repo_batch_size:
         params = {
             "q": query,
-            "sort": "sort",
+            "sort": "stars",
             "order": "desc",
             "per_page": 100,
             "page": page,
@@ -231,16 +252,8 @@ def query_top_repos(url, headers, query, repo_batch_size, max_retries=3, retry_d
                     data = response.json()
                     repos.extend(data.get("items", []))
                     break
-                except requests.exceptions.HTTPError as errh:
-                    print(f"HTTP Error: {errh}")
-                except requests.exceptions.ConnectionError as errc:
-                    print(f"Error Connecting: {errc}")
-                except requests.exceptions.Timeout as errt:
-                    print(f"Timeout Error: {errt}")
-                except requests.exceptions.RequestException as err:
-                    print(f"RequestException Error: {err}")
-                except Exception as e:
-                    print(f"Unknown Error: {e}")
+                except Exception:
+                    pass
 
                 retries += 1
                 if retries < max_retries:
@@ -255,7 +268,7 @@ def query_top_repos(url, headers, query, repo_batch_size, max_retries=3, retry_d
     return repos[:repo_batch_size]
 
 
-def get_top_repos(
+def get_repos_orchestrator(
     n_repos: int,
     last_n_days: int,
     language: str = None,
@@ -281,16 +294,19 @@ def get_top_repos(
     n_intervals = math.ceil(n_repos / 900) if n_repos > 900 else 1
     intervals = get_time_intervals(last_n_days, n_intervals)
     repo_batch_size = n_repos // n_intervals
-    print(f"Querying a total of {n_intervals} batches of {repo_batch_size} repos")
+    print(
+        f"Querying {n_repos} repos, this will be done in {n_intervals} batches"
+    )
 
     repos = []
     for start_date, end_date in intervals:
         query = f"{base_query} created:{start_date}..{end_date}"
         print(f"Query: {repo_batch_size} repos on {start_date} -> {end_date}")
 
-        batch = query_top_repos(url, headers, query, repo_batch_size)
+        batch = run_repos_query(url, headers, query, repo_batch_size)
         repos.extend(batch)
 
+    print()
     return repos
 
 
@@ -302,60 +318,93 @@ def pull_code_helper(repo_key, branch, delete, max_retries=3):
             data = pull_code_from_repo(repo_key, branch=branch, delete=delete)
             return data
         except InvalidGitRepositoryError:
-            print(
-                f"[InvalidGitRepositoryError] Error with {repo_key}, retrying... ({retries + 1}/{max_retries})"
-            )
             shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
             retries += 1
-        except GitCommandError as e:
-            print(
-                f"[GitCommandError] Error with {repo_key}, retrying... ({retries + 1}/{max_retries})"
-            )
+        except GitCommandError:
             shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
             retries += 1
     print(f"Failed to pull data from {repo_key} after {max_retries} attempts.")
     return None
 
 
+def write_to_parquet(filedata, metadata, base_filename, write_batch_counter):
+    """Write data to parquet files and clear the data"""
+    print(f"Writing batch {write_batch_counter} containing {len(filedata)} files..")
+
+    folder = "output_data"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    pl.DataFrame(filedata).write_parquet(
+        f"{folder}/filedata_{base_filename}_{write_batch_counter}.parquet"
+    )
+    pl.DataFrame(metadata).write_parquet(
+        f"{folder}/metadata_{base_filename}_{write_batch_counter}.parquet"
+    )
+
+
+def process_repo(i, repo, metadata, filedata, delete=True):
+    """Process a repository and add its data to the metadata and filedata lists."""
+
+    if repo["size"]:
+        repo_key = repo["html_url"]
+        print(f"({i}) Processing {repo_key}...")
+
+        response = pull_code_helper(
+            repo_key,
+            branch=repo["default_branch"],
+            delete=delete,
+        )
+        if response:
+            metadata_preprocess = flatten_dict(repo)
+            metadata.append(metadata_preprocess)
+
+            for file_obj in response:
+                file_obj["repo_name"] = repo_key
+                filedata.append(file_obj)
+
+    return metadata, filedata
+
+
 def pipeline_fetch_and_load(
     n_repos: int,
     last_n_days: int,
     language: str = None,
-    delete: bool = False,
-) -> Dict[str, Dict]:
-    # remove any old repos
-    if os.path.exists(REPODATA_FOLDER):
-        shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
+    write_batch_size: int = 100,
+) -> None:
+    try:
+        # cleanup repo data folder
+        if os.path.exists(REPODATA_FOLDER):
+            shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
 
-    response = get_top_repos(
-        n_repos=n_repos,
-        last_n_days=last_n_days,
-        language=language,
-    )
+        repos = get_repos_orchestrator(
+            n_repos=n_repos,
+            last_n_days=last_n_days,
+            language=language,
+        )
 
-    github_data = {}
-    for i, repo_metadata in enumerate(response):
-        repo_key = repo_metadata["html_url"]
+        base_filename = datetime.now().strftime("%Y%m%d%H%M%S")
+        write_batch_counter = 1
+        metadata = []
+        filedata = []
 
-        if repo_metadata["size"]:
-            print(f"({i}) Processing {repo_key}...")
-
-            github_data[repo_key] = {}
-            github_data[repo_key]["metadata"] = repo_metadata
-
-            response = pull_code_helper(
-                repo_key,
-                branch=repo_metadata["default_branch"],
-                delete=delete,
+        for i, repo in enumerate(repos):
+            metadata, filedata = process_repo(
+                i, repo, metadata, filedata
             )
-            if response:
-                github_data[repo_key]["files"] = response
-            else:
-                del github_data[repo_key]
-        else:
-            print(f"Skipping {repo_key} as it is empty")
 
-    # clean up repo data
-    shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)
+            # If the batch size is reached, write the data to parquet files and clear the lists
+            if not (i + 1) % write_batch_size:
+                write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
+                metadata.clear()
+                filedata.clear()
+                write_batch_counter += 1
 
-    return github_data
+        # Write the remaining data to parquet files
+        if metadata and filedata:
+            write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
+
+    finally:
+        # Always clean up the repo data folder
+        if os.path.exists(REPODATA_FOLDER):
+            shutil.rmtree(REPODATA_FOLDER, onerror=readonly_to_writable)

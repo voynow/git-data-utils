@@ -5,3 +5,4 @@ build
 dist
 git2doc.egg-info
 .env
+output_data
