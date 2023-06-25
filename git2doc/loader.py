@@ -51,7 +51,15 @@ UNWANTED_TYPES = [
     ".gltf",
     ".cif",
     ".geojson",
-    "pkl",
+    ".pkl",
+    ".bin",
+    ".pdb",
+    ".sdf",
+    ".xmi",
+    ".out",
+    ".train",
+    ".stl",
+    ".kicad_pcb",
 ]
 REPODATA_FOLDER = "./repodata/"
 
