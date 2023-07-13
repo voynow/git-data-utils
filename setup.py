@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='git2doc',
-    version='0.2.3',
+    version='0.2.4',
     description='A tool for converting git repositories into documents',
     author='Jamie Voynow',
     author_email='voynow99@gmail.com',

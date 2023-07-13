@@ -6,7 +6,6 @@ from git.exc import InvalidGitRepositoryError, GitCommandError
 import os
 import math
 from pathlib import Path
-import polars as pl
 import requests
 import shutil
 import stat
@@ -335,20 +334,20 @@ def pull_code_helper(repo_key, branch, delete, max_retries=3):
     return None
 
 
-def write_to_parquet(filedata, metadata, base_filename, write_batch_counter):
-    """Write data to parquet files and clear the data"""
-    print(f"Writing batch {write_batch_counter} containing {len(filedata)} files..")
+# def write_to_parquet(filedata, metadata, base_filename, write_batch_counter):
+#     """Write data to parquet files and clear the data"""
+#     print(f"Writing batch {write_batch_counter} containing {len(filedata)} files..")
 
-    folder = "output_data"
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+#     folder = "output_data"
+#     if not os.path.exists(folder):
+#         os.makedirs(folder)
 
-    pl.DataFrame(filedata).write_parquet(
-        f"{folder}/filedata_{base_filename}_{write_batch_counter}.parquet"
-    )
-    pl.DataFrame(metadata).write_parquet(
-        f"{folder}/metadata_{base_filename}_{write_batch_counter}.parquet"
-    )
+#     pl.DataFrame(filedata).write_parquet(
+#         f"{folder}/filedata_{base_filename}_{write_batch_counter}.parquet"
+#     )
+#     pl.DataFrame(metadata).write_parquet(
+#         f"{folder}/metadata_{base_filename}_{write_batch_counter}.parquet"
+#     )
 
 
 def process_repo(i, repo, metadata, filedata, delete=True):
@@ -403,14 +402,16 @@ def pipeline_fetch_and_load(
 
             # If the batch size is reached, write the data to parquet files and clear the lists
             if not (i + 1) % write_batch_size:
-                write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
+                print("WARNING: write_to_parquet has been temporarily disabled")
+                # write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
                 metadata.clear()
                 filedata.clear()
                 write_batch_counter += 1
 
         # Write the remaining data to parquet files
         if metadata and filedata:
-            write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
+            print("WARNING: write_to_parquet has been temporarily disabled")
+            # write_to_parquet(filedata, metadata, base_filename, write_batch_counter)
 
     finally:
         # Always clean up the repo data folder
